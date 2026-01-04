@@ -76,6 +76,7 @@ fastapi-backend/
 │   │       ├── urls.py
 │   │       ├── views.py
 │   │       ├── schemas.py
+│   │       ├── service.py       # Business logic
 │   │       └── admin.py
 │   └── core/                 # Core utilities
 │       ├── db/              # Database utilities
@@ -159,6 +160,7 @@ project/apps/blog/
 ├── models.py      # Define your models
 ├── schemas.py     # Request/response schemas
 ├── views.py       # View functions
+├── service.py     # Business logic & data access
 ├── urls.py        # Router definition
 └── admin.py       # Admin registrations
 ```
@@ -241,14 +243,14 @@ from project.core.db import get_async_session
 from project.core.responses import BaseResponse
 from .urls import router
 from .schemas import PostListResponse, PostRead
-from .models import Post
+from . import service
 
 @router.get("/", response_model=PostListResponse, status_code=status.HTTP_200_OK)
 async def list_posts(
     session: AsyncSession = Depends(get_async_session)
 ) -> PostListResponse:
     """List all posts."""
-    posts = await Post.objects.all(session)
+    posts = await service.get_all_posts(session)
     return PostListResponse(
         success=True,
         status_code=status.HTTP_200_OK,

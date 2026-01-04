@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.prompt import Prompt
 from typer import Option
+import json
 
 # Django-like: Add project directory to Python path for shorter imports
 # This allows: from apps.users.models import User (instead of project.apps.users.models)
@@ -87,7 +88,7 @@ def createsuperuser(
     _load_env()
 
     async def _create() -> None:
-        from project.core.db import get_sessionmaker
+        from project.core.db import get_default_sessionmaker
         from project.apps.users.auth import get_user_manager
         from project.apps.users.models import User
         from project.apps.users.schemas import UserCreate
@@ -133,7 +134,7 @@ def shell() -> None:
         from project.core.db import (
             Base,
             get_async_session,
-            get_sessionmaker,
+            get_default_sessionmaker,
             Manager,
             QuerySet,
         )
@@ -330,6 +331,7 @@ from project.core.db import get_async_session
 
 # Django-like relative imports (same app)
 from .urls import router  # Import router from urls.py
+from . import service  # Import service layer
 
 # Define routes directly here with @router decorators
 # Example:
@@ -338,7 +340,7 @@ from .urls import router  # Import router from urls.py
 # @router.get("/", response_model=MyModelListResponse, status_code=status.HTTP_200_OK)
 # async def list_items(session: AsyncSession = Depends(get_async_session)) -> MyModelListResponse:
 #     \"\"\"List all items.\"\"\"
-#     items = await get_all_items(session)
+#     items = await service.get_all_items(session)
 #     return MyModelListResponse(
 #         success=True,
 #         status_code=status.HTTP_200_OK,
@@ -349,7 +351,7 @@ from .urls import router  # Import router from urls.py
 # @router.get("/{{item_id}}", response_model=MyModelDetailResponse, status_code=status.HTTP_200_OK)
 # async def get_item(item_id: int, session: AsyncSession = Depends(get_async_session)) -> MyModelDetailResponse:
 #     \"\"\"Get a single item.\"\"\"
-#     item = await get_item_by_id(session, item_id)
+#     item = await service.get_item_by_id(session, item_id)
 #     if not item:
 #         raise HTTPException(status_code=404, detail="Item not found")
 #     return MyModelDetailResponse(
@@ -362,7 +364,7 @@ from .urls import router  # Import router from urls.py
 # @router.post("/", response_model=MyModelCreateResponse, status_code=status.HTTP_201_CREATED)
 # async def create_item(data: MyModelCreate, session: AsyncSession = Depends(get_async_session)) -> MyModelCreateResponse:
 #     \"\"\"Create a new item.\"\"\"
-#     item = await create_item_in_db(session, data)
+#     item = await service.create_item(session, data)
 #     return MyModelCreateResponse(
 #         success=True,
 #         status_code=status.HTTP_201_CREATED,
@@ -394,21 +396,12 @@ from project.core.admin.site import admin_site
     (app_dir / "service.py").write_text(
         """from __future__ import annotations
 
-# Business logic layer
-# Example:
-# async def create_item(name: str) -> dict:
-#     return {{"name": name}}
-"""
-    )
-    (app_dir / "repo.py").write_text(
-        """from __future__ import annotations
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Database query layer
+# Business logic and data access layer
 # Example:
-# async def get_item_by_id(session: AsyncSession, item_id: int):
-#     # Query logic here
+# async def create_item(session: AsyncSession, data):
+#     # Logic and DB access here
 #     pass
 """
     )
@@ -440,11 +433,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
                 lines = content.split("\n")
                 for i, line in enumerate(lines):
                     if "INSTALLED_APPS" in line and "Field" in line:
-                        # Find the closing bracket of the default_factory
-                        for j in range(i, len(lines)):
-                            if "]" in lines[j] and "lambda" not in lines[j]:
-                                lines[j] = lines[j].rstrip("]") + f', {app_path}]'
-                                break
+                        # Handle string format (default="app1,app2")
+                        if 'default="' in line:
+                            # Insert before the closing quote of the default value
+                            # Assuming format: default="app1" or default="app1,app2"
+                            parts = line.split('default="')
+                            if len(parts) > 1:
+                                value_part = parts[1].split('"')
+                                if len(value_part) > 1:
+                                    current_value = value_part[0]
+                                    new_value = f"{current_value},project.apps.{name}" if current_value else f"project.apps.{name}"
+                                    lines[i] = line.replace(f'default="{current_value}"', f'default="{new_value}"')
+                        # Handle list format (default=["app1"])
+                        elif 'default=[' in line:
+                            lines[i] = line.replace(']', f', "project.apps.{name}"]')
                         break
                 settings_file.write_text("\n".join(lines))
                 console.print(f"[green]✓[/green] Added '{app_path}' to INSTALLED_APPS")
@@ -452,6 +454,172 @@ from sqlalchemy.ext.asyncio import AsyncSession
                 console.print(f"[yellow]⚠[/yellow] App already in INSTALLED_APPS")
         else:
             console.print(f"[yellow]⚠[/yellow] Could not find settings.py to update INSTALLED_APPS")
+
+
+
+@app.command()
+def flush(
+    interactive: bool = Option(True, "--interactive/--no-interactive", help="Prompt for confirmation"),
+) -> None:
+    """Delete all data from all tables (Django-like flush)."""
+    _load_env()
+    
+    if interactive:
+        confirm = Prompt.ask("This will wipe [red]ALL[/red] data from your database. Are you sure?", default="no")
+        if confirm.lower() not in ("y", "yes"):
+            console.print("Cancelled.")
+            return
+
+    async def _flush() -> None:
+        from project.core.db import Base, get_default_engine
+        from project.core.registry import load_installed_apps
+        from project.settings import get_settings
+        from sqlalchemy import text
+        
+        settings = get_settings()
+        load_installed_apps(settings)
+        
+        engine = get_default_engine()
+        async with engine.begin() as conn:
+            # Disable foreign key checks for SQLite/PostgreSQL
+            if engine.url.drivername == "aiosqlite":
+                await conn.execute(text("PRAGMA foreign_keys = OFF;"))
+            elif "postgresql" in engine.url.drivername:
+                await conn.execute(text("SET session_replication_role = 'replica';"))
+
+            for table in reversed(Base.metadata.sorted_tables):
+                console.print(f"Flushing table: [cyan]{table.name}[/cyan]")
+                await conn.execute(table.delete())
+            
+            if engine.url.drivername == "aiosqlite":
+                await conn.execute(text("PRAGMA foreign_keys = ON;"))
+            elif "postgresql" in engine.url.drivername:
+                await conn.execute(text("SET session_replication_role = 'origin';"))
+                
+        console.print("[green]✓[/green] Database flushed successfully.")
+
+    asyncio.run(_flush())
+
+
+@app.command()
+def dumpdata(
+    labels: Optional[list[str]] = typer.Argument(None, help="Optional app labels or app_label.ModelName"),
+    output: Optional[str] = Option(None, "--output", "-o", help="Output file path"),
+) -> None:
+    """Dump database data to JSON (Django-like dumpdata)."""
+    _load_env()
+
+    async def _dump() -> None:
+        from project.core.db import get_default_sessionmaker, Base
+        from project.core.db.serialization import dump_data
+        from project.core.registry import load_installed_apps
+        from project.settings import get_settings
+        
+        settings = get_settings()
+        registry = load_installed_apps(settings)
+        
+        # Parse labels: ["users", "users.User"]
+        target_apps = []
+        target_models = {} # app_label -> [ModelName]
+        
+        if labels:
+            for label in labels:
+                if "." in label:
+                    app_name, model_name = label.split(".", 1)
+                    target_models.setdefault(app_name, []).append(model_name)
+                else:
+                    target_apps.append(label)
+
+        models = []
+        for app_path in registry.imported:
+            app_label = app_path.split(".")[-1]
+            
+            # If labels provided, check if this app or its models are requested
+            is_app_requested = not labels or app_label in target_apps or app_label in target_models
+            
+            if not is_app_requested:
+                continue
+                
+            try:
+                models_mod = __import__(f"{app_path}.models", fromlist=[""])
+                for attr_name in dir(models_mod):
+                    attr = getattr(models_mod, attr_name)
+                    if (
+                        isinstance(attr, type)
+                        and issubclass(attr, Base)
+                        and attr is not Base
+                        and attr.__module__.startswith(app_path)
+                    ):
+                        # Filter by model name if specific models were requested for this app
+                        if app_label in target_models and labels:
+                            if attr_name in target_models[app_label]:
+                                models.append(attr)
+                        else:
+                            models.append(attr)
+            except ImportError:
+                pass
+
+        if not models:
+            console.print(f"[yellow]⚠[/yellow] No models found for app label: {app_label}" if app_label else "No models found.")
+            return
+
+        sessionmaker = get_default_sessionmaker()
+        async with sessionmaker() as session:
+            json_data = await dump_data(session, models)
+            
+            if output:
+                Path(output).write_text(json_data)
+                console.print(f"[green]✓[/green] Data dumped to {output}")
+            else:
+                print(json_data)
+
+    asyncio.run(_dump())
+
+
+@app.command()
+def loaddata(
+    fixture: str = typer.Argument(..., help="Path to JSON fixture file"),
+) -> None:
+    """Load data from JSON fixture (Django-like loaddata)."""
+    _load_env()
+    
+    fixture_path = Path(fixture)
+    if not fixture_path.exists():
+        console.print(f"[red]✗[/red] Fixture file not found: {fixture}")
+        raise SystemExit(1)
+
+    async def _load() -> None:
+        from project.core.db import get_default_sessionmaker, Base
+        from project.core.db.serialization import load_data
+        from project.core.registry import load_installed_apps
+        from project.settings import get_settings
+        
+        settings = get_settings()
+        registry = load_installed_apps(settings)
+        
+        # Collect registry models
+        registry_models = {}
+        for app_path in registry.imported:
+            try:
+                models_mod = __import__(f"{app_path}.models", fromlist=[""])
+                for attr_name in dir(models_mod):
+                    attr = getattr(models_mod, attr_name)
+                    if (
+                        isinstance(attr, type)
+                        and issubclass(attr, Base)
+                        and attr is not Base
+                    ):
+                        registry_models[attr_name] = attr
+            except ImportError:
+                pass
+
+        data = json.loads(fixture_path.read_text())
+        sessionmaker = get_default_sessionmaker()
+        async with sessionmaker() as session:
+            count = await load_data(session, data, registry_models)
+            console.print(f"[green]✓[/green] Installed {count} object(s) from {fixture}")
+
+    asyncio.run(_load())
 
 
 if __name__ == "__main__":
