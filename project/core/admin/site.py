@@ -6,6 +6,7 @@ from typing import Any, Iterable, Type
 from fastapi import FastAPI
 from sqladmin import Admin, ModelView
 
+from project.core.db import get_default_engine
 from project.settings import Settings
 
 
@@ -24,9 +25,6 @@ admin_site = AdminSite()
 
 
 def mount_admin(app: FastAPI, settings: Settings) -> None:
-    # Lazy import to avoid importing DB session at import time.
-    from project.core.db import get_default_engine
-
     admin = Admin(app, engine=get_default_engine(), base_url=settings.ADMIN_PATH)
     for view in admin_site.iter_views():
         admin.add_view(view)

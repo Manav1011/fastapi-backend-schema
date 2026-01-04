@@ -19,6 +19,8 @@ Usage:
 from __future__ import annotations
 
 import weakref
+import inspect
+import logging
 from typing import Any, Callable, Optional, ParamSpec, Type
 
 P = ParamSpec("P")
@@ -85,8 +87,6 @@ class Signal:
                 try:
                     # Check if it's async
                     if hasattr(receiver_func, "__call__"):
-                        import inspect
-
                         if inspect.iscoroutinefunction(receiver_func):
                             response = await receiver_func(sender=sender, **kwargs)
                         else:
@@ -94,8 +94,6 @@ class Signal:
                         responses.append((receiver_func, response))
                 except Exception as e:
                     # Log error but don't stop other receivers
-                    import logging
-
                     logger = logging.getLogger(__name__)
                     logger.error(f"Error in signal receiver {receiver_func}: {e}", exc_info=True)
 
@@ -125,8 +123,6 @@ class Signal:
                     response = receiver_func(sender=sender, **kwargs)
                     responses.append((receiver_func, response))
                 except Exception as e:
-                    import logging
-
                     logger = logging.getLogger(__name__)
                     logger.error(f"Error in signal receiver {receiver_func}: {e}", exc_info=True)
 

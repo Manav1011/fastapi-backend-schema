@@ -8,8 +8,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Optional
 
-from sqlalchemy import inspect
+from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from project.core.db.signals import (
+    post_delete,
+    post_save,
+    pre_delete,
+    pre_save,
+)
 
 if TYPE_CHECKING:
     from project.core.db.base import Base
@@ -49,7 +56,6 @@ class ModelMethodsMixin:
         Returns:
             Self (for chaining)
         """
-        from project.core.db import post_save, pre_save
 
         # Check if this is a new instance
         is_new = inspect(self).persistent is False
@@ -89,7 +95,6 @@ class ModelMethodsMixin:
             commit: Whether to commit the transaction (default: True)
             send_signals: Whether to send pre_delete/post_delete signals (default: True)
         """
-        from project.core.db import post_delete, pre_delete
 
         # Send pre_delete signal
         if send_signals:
@@ -196,7 +201,6 @@ class ModelMethodsMixin:
                 defaults={"name": "Test User"}
             )
         """
-        from sqlalchemy import select
 
         # Try to get existing instance
         stmt = select(cls)
@@ -242,7 +246,6 @@ class ModelMethodsMixin:
                 defaults={"name": "Updated Name"}
             )
         """
-        from sqlalchemy import select
 
         # Try to get existing instance
         stmt = select(cls)

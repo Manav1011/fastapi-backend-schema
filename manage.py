@@ -22,6 +22,41 @@ _project_dir = Path(__file__).parent / "project"
 if str(_project_dir.resolve()) not in sys.path:
     sys.path.insert(0, str(_project_dir.resolve()))
 
+# Core imports
+from project.core.db import (
+    Base,
+    Manager,
+    QuerySet,
+    get_async_session,
+    get_default_engine,
+    get_default_sessionmaker,
+)
+from project.core.db.serialization import dump_data, load_data
+from project.core.registry import load_installed_apps
+from project.settings import get_settings
+
+# User app imports
+from project.apps.users.auth import get_user_manager
+from project.apps.users.models import User
+from project.apps.users.schemas import UserCreate
+from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
+
+# Optional/Shell imports
+try:
+    import nest_asyncio
+except ImportError:
+    nest_asyncio = None
+
+try:
+    import IPython
+    from IPython.terminal.embed import InteractiveShellEmbed
+except ImportError:
+    IPython = None
+    InteractiveShellEmbed = None
+
+import code
+from sqlalchemy import text
+
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 console = Console()
 
@@ -88,12 +123,6 @@ def createsuperuser(
     _load_env()
 
     async def _create() -> None:
-        from project.core.db import get_default_sessionmaker
-        from project.apps.users.auth import get_user_manager
-        from project.apps.users.models import User
-        from project.apps.users.schemas import UserCreate
-        from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
-
         sessionmaker = get_default_sessionmaker()
         async with sessionmaker() as session:
             user_db = SQLAlchemyUserDatabase(session, User)
@@ -123,23 +152,11 @@ def shell() -> None:
     _load_env()
 
     # Allow nested event loops for IPython compatibility
-    try:
-        import nest_asyncio
+    if nest_asyncio:
         nest_asyncio.apply()
-    except ImportError:
-        pass  # nest_asyncio not installed, will use fallback
 
     async def _setup_shell() -> None:
         """Set up Django-like shell environment."""
-        from project.core.db import (
-            Base,
-            get_async_session,
-            get_default_sessionmaker,
-            Manager,
-            QuerySet,
-        )
-        from project.core.registry import load_installed_apps
-        from project.settings import get_settings
 
         settings = get_settings()
         sessionmaker = get_default_sessionmaker()  # Uses "default" database
@@ -196,9 +213,7 @@ def shell() -> None:
         }
 
         # Try IPython first (better experience)
-        try:
-            import IPython
-            from IPython.terminal.embed import InteractiveShellEmbed
+        if IPython and InteractiveShellEmbed:
 
             banner = f"""
 Python {sys.version.split()[0]} shell
@@ -214,11 +229,10 @@ Quick start:
 """
             shell = InteractiveShellEmbed(banner1=banner, user_ns=ns)
             shell()
-        except ImportError:
+        except Exception:
             # Fallback to standard Python shell
             console.print("[yellow]IPython not installed. Install with: pip install ipython[/yellow]")
             console.print("Falling back to standard Python shell...")
-            import code
 
             banner = f"""
 Python {sys.version.split()[0]} shell
@@ -471,11 +485,6 @@ def flush(
             return
 
     async def _flush() -> None:
-        from project.core.db import Base, get_default_engine
-        from project.core.registry import load_installed_apps
-        from project.settings import get_settings
-        from sqlalchemy import text
-        
         settings = get_settings()
         load_installed_apps(settings)
         
@@ -510,11 +519,6 @@ def dumpdata(
     _load_env()
 
     async def _dump() -> None:
-        from project.core.db import get_default_sessionmaker, Base
-        from project.core.db.serialization import dump_data
-        from project.core.registry import load_installed_apps
-        from project.settings import get_settings
-        
         settings = get_settings()
         registry = load_installed_apps(settings)
         
@@ -589,11 +593,6 @@ def loaddata(
         raise SystemExit(1)
 
     async def _load() -> None:
-        from project.core.db import get_default_sessionmaker, Base
-        from project.core.db.serialization import load_data
-        from project.core.registry import load_installed_apps
-        from project.settings import get_settings
-        
         settings = get_settings()
         registry = load_installed_apps(settings)
         

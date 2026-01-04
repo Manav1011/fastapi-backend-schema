@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Optional, Type, Union
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import ForeignKey, String, Integer
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
     from uuid import UUID
-
     from sqlalchemy.orm import DeclarativeBase
 
 
@@ -38,8 +37,6 @@ def _get_fk_target(to: Union[str, Type["DeclarativeBase"]]) -> str:
 
 def _get_fk_type(to: Union[str, Type["DeclarativeBase"]]) -> Any:
     """Infer foreign key column type from target model."""
-    from sqlalchemy import Integer
-
     # Default to UUID (our standard)
     default_type = PG_UUID(as_uuid=True)
 

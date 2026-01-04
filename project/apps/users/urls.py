@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi_users import FastAPIUsers
 
 # Django-like relative imports (same app)
@@ -60,8 +60,6 @@ def get_current_staff_user(
 ) -> User:
     """Django-like: require staff user."""
     if not current_user.is_staff:
-        from fastapi import HTTPException, status
-
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Staff access required",
@@ -74,8 +72,6 @@ def get_current_superuser_or_staff(
 ) -> User:
     """Django-like: require superuser or staff."""
     if not (current_user.is_superuser or current_user.is_staff):
-        from fastapi import HTTPException, status
-
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Superuser or staff access required",

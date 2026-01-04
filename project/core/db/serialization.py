@@ -5,7 +5,7 @@ import uuid
 from datetime import date, datetime, time
 from typing import Any, Optional
 
-from sqlalchemy import inspect
+from sqlalchemy import inspect, types
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from project.core.db.base import Base
@@ -92,7 +92,6 @@ async def load_data(
             raise ValueError(f"Model {model_path} not found in registry")
         
         # Handle types (UUID, datetime)
-        from sqlalchemy import types
         for key, value in fields.items():
             column = model_cls.__table__.columns.get(key)
             if column is not None and isinstance(value, str):

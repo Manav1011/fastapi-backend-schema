@@ -6,6 +6,8 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+import logging
+
 from project.core.responses import create_error_response, ErrorResponse
 
 
@@ -54,8 +56,6 @@ def install_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(Exception)
     async def _general_exception_handler(_: Request, exc: Exception) -> ErrorResponse:
         """Handle unexpected exceptions."""
-        import logging
-
         logger = logging.getLogger(__name__)
         logger.exception("Unhandled exception", exc_info=exc)
         error_response = create_error_response(

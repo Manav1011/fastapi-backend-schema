@@ -8,9 +8,19 @@ from fastapi.responses import RedirectResponse
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from project.api.v1 import api_v1_router
+from project.api.v1 import (
+    api_v1_router,
+    include_installed_app_routers,
+)
+from project.core.admin.site import mount_admin
+from project.core.errors import install_exception_handlers
 from project.core.logging import configure_logging
+from project.core.middleware.access_log import AccessLogMiddleware
+from project.core.middleware.request_id import RequestIdMiddleware
+from project.core.registry import load_installed_apps
 from project.settings import get_settings
+from starlette.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
 
 @asynccontextmanager
@@ -33,8 +43,6 @@ def create_app() -> FastAPI:
     configure_logging(debug=settings.DEBUG)
 
     # Add JWT security scheme to OpenAPI for Swagger "Authorize" button
-    from fastapi.openapi.utils import get_openapi
-
     def custom_openapi() -> dict:
         if app.openapi_schema:
             return app.openapi_schema
@@ -57,10 +65,6 @@ def create_app() -> FastAPI:
     app.openapi = custom_openapi
 
     # Middleware: keep explicit + settings-driven (Django-like clarity)
-    from project.core.middleware.access_log import AccessLogMiddleware
-    from project.core.middleware.request_id import RequestIdMiddleware
-    from starlette.middleware.cors import CORSMiddleware
-
     if settings.trusted_hosts_list:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_hosts_list)
 
@@ -79,15 +83,11 @@ def create_app() -> FastAPI:
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 
     # Registry autodiscovery (models/urls/admin)
-    from project.core.registry import load_installed_apps
-    from project.api.v1 import include_installed_app_routers
-    
     registry = load_installed_apps(settings)
     app.state.registry = registry
     include_installed_app_routers(api_v1_router)
 
     # Admin panel
-    from project.core.admin.site import mount_admin
     mount_admin(app, settings)
 
     # Root redirects for convenience (redirect /docs to /api/v1/docs)
@@ -107,8 +107,6 @@ def create_app() -> FastAPI:
     app.include_router(api_v1_router, prefix=settings.API_PREFIX)
 
     # Exception handlers (consistent error format)
-    from project.core.errors import install_exception_handlers
-
     install_exception_handlers(app)
 
     return app
