@@ -229,7 +229,7 @@ Quick start:
 """
             shell = InteractiveShellEmbed(banner1=banner, user_ns=ns)
             shell()
-        except Exception:
+        else:
             # Fallback to standard Python shell
             console.print("[yellow]IPython not installed. Install with: pip install ipython[/yellow]")
             console.print("Falling back to standard Python shell...")
