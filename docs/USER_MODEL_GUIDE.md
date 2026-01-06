@@ -51,10 +51,10 @@ The `users` app provides the following endpoints automatically at `/api/v1/auth/
 
 ## 🛡️ 4. Using Permissions in Your Views
 
-You can protect your routes by using the built-in dependencies in `project/apps/users/urls.py`.
+You can protect your routes by using the built-in dependencies in `project/apps/users/dependencies.py`.
 
 ```python
-from project.apps.users.urls import get_current_active_user, get_current_staff_user
+from project.apps.users.dependencies import get_current_active_user, get_current_staff_user
 
 # Require any logged in user
 @router.get("/protected")

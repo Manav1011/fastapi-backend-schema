@@ -52,13 +52,26 @@ def create_app() -> FastAPI:
             description="Django-like FastAPI backend",
             routes=app.routes,
         )
-        openapi_schema["components"]["securitySchemes"] = {
-            "bearerAuth": {
-                "type": "http",
-                "scheme": "bearer",
-                "bearerFormat": "JWT",
-            }
+        
+        # ✅ MERGE security schemes instead of overwriting
+        components = openapi_schema.setdefault("components", {})
+        security_schemes = components.setdefault("securitySchemes", {})
+        
+        # Add/update bearerAuth (for consistency)
+        security_schemes["bearerAuth"] = {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
         }
+        
+        # ✅ CRITICAL: Override OAuth2PasswordBearer to be HTTP Bearer (not OAuth2 flow)
+        # This prevents Swagger from asking for client_id/client_secret
+        security_schemes["OAuth2PasswordBearer"] = {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+        }
+        
         app.openapi_schema = openapi_schema
         return app.openapi_schema
 
