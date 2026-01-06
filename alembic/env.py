@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 from logging.config import fileConfig
+from typing import Any
 
 from alembic import context
+from alembic.operations import ops
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
@@ -38,6 +40,25 @@ def get_url(using: str = "default") -> str:
     return databases[using]
 
 
+def process_revision_directives(context: Any, revision: tuple, directives: list) -> None:
+    """
+    Process revision directives to add necessary imports for custom types.
+    This ensures that types like fastapi_users_db_sqlalchemy.generics.GUID()
+    are properly imported in migration files.
+    """
+    if directives:
+        script = directives[0]
+        # Check if any operation uses fastapi_users_db_sqlalchemy types
+        for op in script.upgrade_ops.ops:
+            if isinstance(op, ops.CreateTableOp):
+                for col in op.columns:
+                    if hasattr(col, "type"):
+                        col_type = col.type
+                        if hasattr(col_type, "__module__") and "fastapi_users_db_sqlalchemy" in col_type.__module__:
+                            script.imports.add("import fastapi_users_db_sqlalchemy")
+                            break
+
+
 def run_migrations_offline() -> None:
     # Ensure all installed app models are imported before autogenerate runs.
     load_installed_apps(get_settings())
@@ -49,6 +70,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        process_revision_directives=process_revision_directives,
     )
 
     with context.begin_transaction():
@@ -63,6 +85,7 @@ def do_run_migrations(connection: Connection) -> None:
         connection=connection,
         target_metadata=Base.metadata,
         compare_type=True,
+        process_revision_directives=process_revision_directives,
     )
 
     with context.begin_transaction():
